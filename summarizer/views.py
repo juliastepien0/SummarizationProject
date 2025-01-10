@@ -19,27 +19,50 @@ def summarize_text(request):
     if request.method == 'POST':
         try:
             # Parsing the incoming JSON data from the frontend
-            data = json.loads(request.body)
-            input_type = data.get('input_type')  # 'text', 'file', 'url'
-            form = data.get('form')  # 'text' or 'bullet points'
-            length = data.get('length')  # 'short', 'medium', 'long'
-            language = data.get('language')  # e.g., 'english', 'polish'
-            text = None
 
-            # Extract text based on input type
-            if input_type == 'text':
-                text = extract_text_from_input_field(data.get('text'))
-            elif input_type == 'file':
-                uploaded_file = request.FILES.get('file')
-                if uploaded_file:
-                    text = process_uploaded_file(uploaded_file)
-                else:
-                    return JsonResponse({'error': 'No file provided'}, status=400)
-            elif input_type == 'url':
-                text = extract_text_from_url(data.get('url'))
+            # pure JSON
+            if request.content_type == 'application/json':
+                data = json.loads(request.body)
+                input_type = data.get('input_type')  # 'text', 'file', 'url'
+                form = data.get('form')  # 'text' or 'bullet points'
+                length = data.get('length')  # 'short', 'medium', 'long'
+                language = data.get('language')  # e.g., 'english', 'polish'
+                text = None
 
-            if not text:
-                return JsonResponse({'error': 'No valid text found'}, status=400)
+                # Extract text based on input type
+                if input_type == 'text':
+                    text = extract_text_from_input_field(data.get('text'))
+                elif input_type == 'file':
+                    uploaded_file = request.FILES.get('file')
+                    if uploaded_file:
+                        text = process_uploaded_file(uploaded_file)
+                    else:
+                        return JsonResponse({'error': 'No file provided'}, status=400)
+                elif input_type == 'url':
+                    text = extract_text_from_url(data.get('url'))
+
+                if not text:
+                    return JsonResponse({'error': 'No valid text found'}, status=400)
+
+            # multipart/form-data for Postman
+            elif request.content_type == 'multipart/form-data':
+                input_type = request.POST.get('input_type')
+                form = request.POST.get('form')
+                length = request.POST.get('length')
+                language = request.POST.get('language')
+                text = None
+
+                if input_type == 'text':
+                    text = request.POST.get('text')
+                elif input_type == 'file':
+                    uploaded_file = request.FILES.get('file')
+                    if uploaded_file:
+                        text = process_uploaded_file(uploaded_file)
+                    else:
+                        return JsonResponse({'error': 'No file provided'}, status=400)
+                elif input_type == 'url':
+                    text = extract_text_from_url(request.POST.get('url'))
+
 
             # Generate summary from the extracted text
             summary = generate_summary(form=form, length=length, language=language, text=text)
