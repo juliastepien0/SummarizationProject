@@ -27,6 +27,7 @@ def summarize_text(request):
                 form = data.get('form')  # 'text' or 'bullet points'
                 length = data.get('length')  # 'short', 'medium', 'long'
                 language = data.get('language')  # e.g., 'english', 'polish'
+                granularity = data.get('granularity') # 'detailed', 'general'
                 text = None
 
                 # Extract text based on input type
@@ -63,9 +64,12 @@ def summarize_text(request):
                 elif input_type == 'url':
                     text = extract_text_from_url(request.POST.get('url'))
 
+                if not text:
+                    return JsonResponse({'error': 'No valid text found'}, status=400)
+
 
             # Generate summary from the extracted text
-            summary = generate_summary(form=form, length=length, language=language, text=text)
+            summary = generate_summary(form=form, length=length, language=language, text=text, granularity=granularity)
 
             # Return the summary in the response
             return JsonResponse({'summary': summary}, status=200)

@@ -83,7 +83,7 @@ def extract_text_from_url(url: str) -> str:
         return f"Error fetching content from URL: {e}"
 
 
-def generate_summary(form: str, length: str, language: str, text: str) -> str:
+def generate_summary(form: str, length: str, language: str, text: str, granularity: str) -> str:
     """
     Generates a summary for the provided text based on specified parameters.
 
@@ -98,9 +98,15 @@ def generate_summary(form: str, length: str, language: str, text: str) -> str:
     """
     try:
         # Generating the summary using the generative AI model
-        prompt = f"Length of summary: {length}. Summarize this in {language} in form of {form}: {text}."
-        response = model.generate_content(prompt)
-        cleaned_response = " ".join(response.text.split())  # Clean up extra spaces
-        return cleaned_response
+        if form == "text":
+            prompt = f"Summarize the given text in {language} in form of a {length} sentence text, the summary should be {granularity}: {text}."
+            response = model.generate_content(prompt)
+            cleaned_response = " ".join(response.text.split())  # Clean up extra spaces
+            return cleaned_response
+        elif form == "bullet points":
+            prompt = f"Summarize the given text in {language} in form of {length} bullet points with key information, the summary should be {granularity}: {text}."
+            response = model.generate_content(prompt)
+            cleaned_response = " ".join(response.text.split())  # Clean up extra spaces
+            return cleaned_response
     except Exception as e:
         return f"Error generating summary: {e}"
