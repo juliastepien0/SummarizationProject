@@ -1,15 +1,22 @@
-# Project Name: Text Summarization App
+# Project Name: AI Summarizer
 
 ## Introduction
 
 This project is a Django-based web application that allows users to summarize text in various formats. The app supports input from:
 
 - Plain text
-- Uploaded files (TXT, PDF)
+- Uploaded text files and documents (TXT, PDF, DOCX)
+- Uploaded audio files (WAV)
 - URLs
 
-The summaries are generated using a generative AI model.
+Users are provided with various options of **summary configuration**, allowing choice of language, form (text or bullet points), length and level of detail. \
+The summaries are generated using a generative AI model Gemini.
 
+## Live application
+
+This project is currently **deployed** on Render. \
+**Go to https://ipz.onrender.com/ to try  it out.**
+![audioSummary.png](Screenshots%2FaudioSummary.png)
 ## Installation
 
 Follow the steps below to set up the project:
@@ -51,14 +58,13 @@ This project uses a config.json file to store sensitive variables, such as API k
 
 To configure the application:
 1. Create a config.json file in the root directory of the project.
-2. Add the necessary sensitive variables to config.json (e.g., API keys).
+2. Add the necessary sensitive variables to config.json.
    
-Example config.json format:
+Needed config.json format:
 
 ```json
 {
-  "api_key": "your_api_key_here",
-  "other_config": "your_other_value_here"
+  "GEMINI_KEY": "your_api_key_here"
 }
 
 ```
