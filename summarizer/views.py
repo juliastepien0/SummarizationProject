@@ -1,10 +1,19 @@
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 import json
-from .utils import extract_text_from_input_field, extract_text_from_txt, extract_text_from_pdf, extract_text_from_url, generate_summary
+from docx import Document
+from django.http import HttpResponse
+from django.views.decorators.http import require_http_methods
+from .utils import extract_text_from_txt, extract_text_from_pdf, extract_text_from_url, generate_summary, \
+    sanitize_input, validate_uploaded_file, extract_and_validate_url, extract_text_from_docx, extract_text_from_audio
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from .serializers import SummarizationSerializer
+from django.views.decorators.csrf import csrf_protect, csrf_exempt
+from django.core.exceptions import ValidationError
 
-@csrf_exempt
+MAX_TEXT_LENGTH = 4096
+
+
+@api_view(['POST'])
 def summarize_text(request):
     """
     This view handles the summarization of text based on the input type.
@@ -16,88 +25,73 @@ def summarize_text(request):
     Returns:
         JsonResponse: A response with either the summary or an error message.
     """
-    if request.method == 'POST':
-        try:
-            # Parsing the incoming JSON data from the frontend
+    serializer = SummarizationSerializer(data=request.data)
 
-            # pure JSON
-            if request.content_type == 'application/json':
-                data = json.loads(request.body)
-                input_type = data.get('input_type')  # 'text', 'file', 'url'
-                form = data.get('form')  # 'text' or 'bullet points'
-                length = data.get('length')  # 'short', 'medium', 'long'
-                language = data.get('language')  # e.g., 'english', 'polish'
-                granularity = data.get('granularity') # 'detailed', 'general'
-                text = None
+    if serializer.is_valid():
+        data = serializer.validated_data
+        input_type = data['input_type']
+        form = data['form']
+        length = data['length']
+        language = data['language']
+        granularity = data['granularity']
+        text = None
 
-                # Extract text based on input type
-                if input_type == 'text':
-                    text = extract_text_from_input_field(data.get('text'))
-                elif input_type == 'file':
-                    uploaded_file = request.FILES.get('file')
-                    if uploaded_file:
-                        text = process_uploaded_file(uploaded_file)
-                    else:
-                        return JsonResponse({'error': 'No file provided'}, status=400)
-                elif input_type == 'url':
-                    text = extract_text_from_url(data.get('url'))
+        if input_type == 'text':
+            raw_text = data['text']
+            url = extract_and_validate_url(raw_text)
 
+            if url and raw_text.startswith(url):
+                text = extract_text_from_url(url)
                 if not text:
-                    return JsonResponse({'error': 'No valid text found'}, status=400)
+                    return Response({'error': 'Invalid or unsafe URL'}, status=400)
+            else:
+                text = sanitize_input(raw_text)
+                if len(text) > MAX_TEXT_LENGTH:
+                    return Response({'error': f'Text is too long! Max size is {MAX_TEXT_LENGTH} characters.'}, status=400)
 
-            # multipart/form-data for Postman
-            elif request.content_type == 'multipart/form-data':
-                input_type = request.POST.get('input_type')
-                form = request.POST.get('form')
-                length = request.POST.get('length')
-                language = request.POST.get('language')
-                text = None
+        elif input_type == 'file':
+            uploaded_file = data['file']
 
-                if input_type == 'text':
-                    text = request.POST.get('text')
-                elif input_type == 'file':
-                    uploaded_file = request.FILES.get('file')
-                    if uploaded_file:
-                        text = process_uploaded_file(uploaded_file)
-                    else:
-                        return JsonResponse({'error': 'No file provided'}, status=400)
-                elif input_type == 'url':
-                    text = extract_text_from_url(request.POST.get('url'))
+            try:
+                validate_uploaded_file(uploaded_file)
+            except ValidationError as e:
+                return Response({'error': str(e)}, status=400)
 
-                if not text:
-                    return JsonResponse({'error': 'No valid text found'}, status=400)
+            if uploaded_file.name.endswith('.txt'):
+                text = extract_text_from_txt(uploaded_file)
+            elif uploaded_file.name.endswith('.pdf'):
+                text = extract_text_from_pdf(uploaded_file)
+            elif uploaded_file.name.endswith('.docx'):
+                text = extract_text_from_docx(uploaded_file)
+            elif uploaded_file.name.endswith('.wav'):
+                text = extract_text_from_audio(uploaded_file)
+            else:
+                return Response({'error': 'Unsupported file format'}, status=400)
 
+        if not text:
+            return Response({'error': 'No valid text found'}, status=400)
 
-            # Generate summary from the extracted text
-            summary = generate_summary(form=form, length=length, language=language, text=text, granularity=granularity)
+        summary = generate_summary(form=form, length=length, language=language, text=text, granularity=granularity)
+        return Response({'summary': summary}, status=200)
 
-            # Return the summary in the response
-            return JsonResponse({'summary': summary}, status=200)
+    return Response({'error': serializer.errors}, status=400)
 
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
-        except Exception as e:
-            return JsonResponse({'error': f"An error occurred: {str(e)}"}, status=500)
+@csrf_exempt
+@require_http_methods(["POST"])
+def download_summary(request):
 
-    return JsonResponse({'error': 'Invalid request method'}, status=405)
+    data = json.loads(request.body)
+    summary = data.get('summary', '')
 
+    doc = Document()
+    doc.add_heading('Summary Document', 0)
+    doc.add_paragraph(summary)
 
-def process_uploaded_file(uploaded_file) -> str:
-    """
-    Process the uploaded file based on its extension and extract text.
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+    response['Content-Disposition'] = 'attachment; filename=summary.docx'
 
-    Args:
-        uploaded_file (InMemoryUploadedFile): The uploaded file object.
+    doc.save(response)
 
-    Returns:
-        str: Extracted text from the file, or an error message if the format is unsupported.
-    """
-    try:
-        if uploaded_file.name.endswith('.txt'):
-            return extract_text_from_txt(uploaded_file)
-        elif uploaded_file.name.endswith('.pdf'):
-            return extract_text_from_pdf(uploaded_file)
-        else:
-            return None
-    except Exception as e:
-        return f"Error processing file: {e}"
+    return response
